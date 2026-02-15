@@ -24,7 +24,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     user_id = query.from_user.id
 
     if data == 'back':
-        await query.edit_message_text("Привет! 👋 Выберите действие:", reply_markup=MAIN_KEYBOARD)
+        await query.message.reply_text("Привет! 👋 Выберите действие:", reply_markup=MAIN_KEYBOARD)
         return None
     elif data == 'check_trc20':
         context.user_data['network'] = 'TRC20'
