@@ -38,7 +38,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await query.message.reply_text(
             "❓ FAQ:\n"
             "- Этот бот проверяет баланс USDT на кошельках TRC20 (Tron) и ERC20 (Ethereum). 💰\n"
-            "- Мониторинг: Добавьте кошелек, и бот уведомит, если баланс увеличится на 1500+ USDT (проверка каждые 60 мин). 🔔\n"
+            "- Мониторинг: Добавьте кошелек, и бот уведомит, если баланс достигнет 1500+ USDT (проверка каждые 60 мин). 🔔\n"
             "- Проверка: Введите адрес, и бот покажет текущий баланс с полной аналитикой. 🔍\n"
             "- Метки: Ставьте метки на кошельки для удобства. 🏷️\n"
             "- Адреса: TRC20 начинаются с 'T', ERC20 с '0x'.\n"
@@ -107,7 +107,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         try:
             add_wallet(user_id, wallet, network, 'Без метки')
             keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Выход в главное меню", callback_data='back')]])
-            await query.message.reply_text(f"Кошелек {wallet} ({network}) добавлен для мониторинга. 🔔 Вы получите уведомление при увеличении баланса на 1500+ USDT.", reply_markup=keyboard)
+            await query.message.reply_text(f"Кошелек {wallet} ({network}) добавлен для мониторинга. 🔔 Вы получите уведомление при балансе 1500+ USDT.", reply_markup=keyboard)
         except Exception as e:
             logging.error(f"Ошибка при добавлении кошелька для user_id {user_id}: {e}")
             keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Выход в главное меню", callback_data='back')]])
@@ -169,7 +169,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 try:
                     add_wallet(user_id, wallet, network, label)
                     keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Выход в главное меню", callback_data='back')]])
-                    await update.message.reply_text(f"Кошелек {wallet} ({network}) с меткой '{label}' добавлен для мониторинга. 🔔 Вы получите уведомление при увеличении баланса на 1500+ USDT.", reply_markup=keyboard)
+                    await update.message.reply_text(f"Кошелек {wallet} ({network}) с меткой '{label}' добавлен для мониторинга. 🔔 Вы получите уведомление при балансе 1500+ USDT.", reply_markup=keyboard)
                 except Exception as e:
                     logging.error(f"Ошибка при добавлении кошелька для user_id {user_id}: {e}")
                     keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Выход в главное меню", callback_data='back')]])
@@ -194,11 +194,10 @@ async def monitor_wallets(context: ContextTypes.DEFAULT_TYPE):
             else:
                 current_balance, _ = get_usdt_balance_erc20(wallet, ETHERSCAN_API_KEY)
             
-            if current_balance - last_balance >= 1500:
-                increase = current_balance - last_balance
+            if current_balance >= 1500 and last_balance < 1500:  # Уведомление при балансе >= 1500 USDT
                 await context.bot.send_message(
                     chat_id=user_id,
-                    text=f"🔔 Уведомление: Баланс на кошельке '{label}' ({wallet}, {network}) увеличился на {increase:.6f} USDT (теперь {current_balance:.6f} USDT)."
+                    text=f"🔔 Уведомление: Баланс на кошельке '{label}' ({wallet}, {network}) достиг {current_balance:.6f} USDT (больше 1500 USDT)."
                 )
                 update_balance(user_id, wallet, network, current_balance)
     except Exception as e:
@@ -232,4 +231,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
