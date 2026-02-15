@@ -14,12 +14,14 @@ MAIN_KEYBOARD = ReplyKeyboardMarkup([
     [KeyboardButton("➕ Добавить кошелек"), KeyboardButton("📋 Мои кошельки")]
 ], resize_keyboard=True, one_time_keyboard=False)
 
-NETWORK_KEYBOARD = ReplyKeyboardMarkup([
-    [KeyboardButton("🔗 TRC20"), KeyboardButton("🔗 ERC20")]
-], resize_keyboard=True, one_time_keyboard=True)
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text("Привет! 👋 Выберите действие:", reply_markup=MAIN_KEYBOARD)
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("❓ FAQ", callback_data='faq')],
+        [InlineKeyboardButton("💰 Проверить баланс", callback_data='check_balance')],
+        [InlineKeyboardButton("➕ Добавить кошелек", callback_data='add_wallet')],
+        [InlineKeyboardButton("📋 Мои кошельки", callback_data='my_wallets')]
+    ])
+    await update.message.reply_text("Привет! 👋 Выберите действие:", reply_markup=keyboard)
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
@@ -28,29 +30,26 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     user_id = query.from_user.id
 
     if data == 'menu':
-        await query.edit_message_text("Привет! 👋 Выберите действие:", reply_markup=MAIN_KEYBOARD)
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("❓ FAQ", callback_data='faq')],
+            [InlineKeyboardButton("💰 Проверить баланс", callback_data='check_balance')],
+            [InlineKeyboardButton("➕ Добавить кошелек", callback_data='add_wallet')],
+            [InlineKeyboardButton("📋 Мои кошельки", callback_data='my_wallets')]
+        ])
+        await query.edit_message_text("Привет! 👋 Выберите действие:", reply_markup=keyboard)
         return None
     elif data == 'back':
-        await query.edit_message_text("Привет! 👋 Выберите действие:", reply_markup=MAIN_KEYBOARD)
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("❓ FAQ", callback_data='faq')],
+            [InlineKeyboardButton("💰 Проверить баланс", callback_data='check_balance')],
+            [InlineKeyboardButton("➕ Добавить кошелек", callback_data='add_wallet')],
+            [InlineKeyboardButton("📋 Мои кошельки", callback_data='my_wallets')]
+        ])
+        await query.edit_message_text("Привет! 👋 Выберите действие:", reply_markup=keyboard)
         return None
-    elif data.startswith('add_monitor_'):
-        wallet = data.split('_')[2]
-        network = data.split('_')[3]
-        try:
-            add_wallet(user_id, wallet, network, 'Без метки')
-            await query.edit_message_text(f"Кошелек {wallet} ({network}) добавлен для мониторинга. 🔔 Вы получите уведомление при увеличении баланса на 1500+ USDT.")
-        except Exception as e:
-            logging.error(f"Ошибка при добавлении кошелька для user_id {user_id}: {e}")
-            await query.edit_message_text("Ошибка при добавлении кошелька. Попробуйте позже.")
-        return None
-
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    text = update.message.text
-    user_id = update.effective_user.id if update.effective_user else None
-
-    if text == "❓ FAQ":
+    elif data == 'faq':
         keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Назад", callback_data='back')]])
-        await update.message.reply_text(
+        await query.edit_message_text(
             "❓ FAQ:\n"
             "- Этот бот проверяет баланс USDT на кошельках TRC20 (Tron) и ERC20 (Ethereum). 💰\n"
             "- Мониторинг: Добавьте кошелек, и бот уведомит, если баланс увеличится на 1500+ USDT (проверка каждые 60 мин). 🔔\n"
@@ -61,112 +60,133 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             reply_markup=keyboard
         )
         return None
-    elif text == "💰 Проверить баланс":
-        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Назад", callback_data='back')]])
-        await update.message.reply_text("Выберите сеть для проверки баланса: 🔍", reply_markup=NETWORK_KEYBOARD)
-        await update.message.reply_text("Или вернитесь:", reply_markup=keyboard)
+    elif data == 'check_balance':
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔗 TRC20", callback_data='check_trc20')],
+            [InlineKeyboardButton("🔗 ERC20", callback_data='check_erc20')],
+            [InlineKeyboardButton("Назад", callback_data='back')]
+        ])
+        await query.edit_message_text("Выберите сеть для проверки баланса: 🔍", reply_markup=keyboard)
         context.user_data['action'] = 'check'
         return SELECT_NETWORK_CHECK
-    elif text == "➕ Добавить кошелек":
-        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Назад", callback_data='back')]])
-        await update.message.reply_text("Выберите сеть для добавления кошелька на мониторинг: ➕", reply_markup=NETWORK_KEYBOARD)
-        await update.message.reply_text("Или вернитесь:", reply_markup=keyboard)
+    elif data == 'add_wallet':
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔗 TRC20", callback_data='add_trc20')],
+            [InlineKeyboardButton("🔗 ERC20", callback_data='add_erc20')],
+            [InlineKeyboardButton("Назад", callback_data='back')]
+        ])
+        await query.edit_message_text("Выберите сеть для добавления кошелька на мониторинг: ➕", reply_markup=keyboard)
         context.user_data['action'] = 'add'
         return SELECT_NETWORK_ADD
-    elif text == "📋 Мои кошельки":
-        if not user_id:
-            await update.message.reply_text("Ошибка: Не удалось определить пользователя. Попробуйте /start. ❌")
-            return None
+    elif data == 'my_wallets':
         try:
             wallets = get_user_wallets(user_id)
             if not wallets:
                 keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Назад", callback_data='back')]])
-                await update.message.reply_text("У вас нет добавленных кошельков. ➕ Добавьте первый!", reply_markup=keyboard)
+                await query.edit_message_text("У вас нет добавленных кошельков. ➕ Добавьте первый!", reply_markup=keyboard)
             else:
                 wallet_list = "\n".join([f"🏷️ {label}: {wallet} ({network})" for wallet, network, _, label in wallets])
                 keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Назад", callback_data='back')]])
-                await update.message.reply_text(f"📋 Ваши кошельки:\n{wallet_list}", reply_markup=keyboard)
+                await query.edit_message_text(f"📋 Ваши кошельки:\n{wallet_list}", reply_markup=keyboard)
         except Exception as e:
             logging.error(f"Ошибка при получении кошельков для user_id {user_id}: {e}")
             keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Назад", callback_data='back')]])
-            await update.message.reply_text("Ошибка при загрузке кошельков. Попробуйте позже или /start. ❌", reply_markup=keyboard)
+            await query.edit_message_text("Ошибка при загрузке кошельков. Попробуйте позже или /start. ❌", reply_markup=keyboard)
         return None
-    elif text == "🔗 TRC20":
-        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Назад", callback_data='back')]])
+    elif data == 'check_trc20':
         context.user_data['network'] = 'TRC20'
-        if context.user_data.get('action') == 'check':
-            await update.message.reply_text("Введите адрес кошелька для проверки баланса и аналитики: 🔍", reply_markup=keyboard)
-            return ENTER_WALLET_CHECK
-        elif context.user_data.get('action') == 'add':
-            await update.message.reply_text("Введите метку для кошелька (например, 'Мой личный' или оставьте пустым): 🏷️", reply_markup=keyboard)
-            return ENTER_LABEL_ADD
-    elif text == "🔗 ERC20":
         keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Назад", callback_data='back')]])
+        await query.edit_message_text("Введите адрес кошелька для проверки баланса и аналитики: 🔍", reply_markup=keyboard)
+        return ENTER_WALLET_CHECK
+    elif data == 'check_erc20':
         context.user_data['network'] = 'ERC20'
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Назад", callback_data='back')]])
+        await query.edit_message_text("Введите адрес кошелька для проверки баланса и аналитики: 🔍", reply_markup=keyboard)
+        return ENTER_WALLET_CHECK
+    elif data == 'add_trc20':
+        context.user_data['network'] = 'TRC20'
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Назад", callback_data='back')]])
+        await query.edit_message_text("Введите метку для кошелька (например, 'Мой личный' или оставьте пустым): 🏷️", reply_markup=keyboard)
+        return ENTER_LABEL_ADD
+    elif data == 'add_erc20':
+        context.user_data['network'] = 'ERC20'
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Назад", callback_data='back')]])
+        await query.edit_message_text("Введите метку для кошелька (например, 'Мой личный' или оставьте пустым): 🏷️", reply_markup=keyboard)
+        return ENTER_LABEL_ADD
+    elif data.startswith('add_monitor_'):
+        wallet = data.split('_')[2]
+        network = data.split('_')[3]
+        try:
+            add_wallet(user_id, wallet, network, 'Без метки')
+            keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Назад", callback_data='back')]])
+            await query.edit_message_text(f"Кошелек {wallet} ({network}) добавлен для мониторинга. 🔔 Вы получите уведомление при увеличении баланса на 1500+ USDT.", reply_markup=keyboard)
+        except Exception as e:
+            logging.error(f"Ошибка при добавлении кошелька для user_id {user_id}: {e}")
+            keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Назад", callback_data='back')]])
+            await query.edit_message_text("Ошибка при добавлении кошелька. Попробуйте позже.", reply_markup=keyboard)
+        return None
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    text = update.message.text
+    user_id = update.effective_user.id if update.effective_user else None
+
+    if 'network' in context.user_data:
+        network = context.user_data['network']
         if context.user_data.get('action') == 'check':
-            await update.message.reply_text("Введите адрес кошелька для проверки баланса и аналитики: 🔍", reply_markup=keyboard)
-            return ENTER_WALLET_CHECK
+            wallet = text.strip()
+            if network == 'TRC20' and not wallet.startswith('T'):
+                keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Назад", callback_data='back')]])
+                await update.message.reply_text("Ошибка: Адрес TRC20 должен начинаться с 'T'. Попробуйте снова. ❌", reply_markup=keyboard)
+                return ENTER_WALLET_CHECK
+            if network == 'ERC20' and not wallet.startswith('0x'):
+                keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Назад", callback_data='back')]])
+                await update.message.reply_text("Ошибка: Адрес ERC20 должен начинаться с '0x'. Попробуйте снова. ❌", reply_markup=keyboard)
+                return ENTER_WALLET_CHECK
+            analytics = get_wallet_analytics(wallet, network, TRONGRID_API_KEY if network == 'TRC20' else ETHERSCAN_API_KEY)
+            menu_keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("Меню", callback_data='menu')],
+                [InlineKeyboardButton("Добавить на мониторинг", callback_data=f'add_monitor_{wallet}_{network}')]
+            ])
+            await update.message.reply_text(
+                f"💰 Проверка баланса и аналитика для {network} кошелька {wallet}:\n"
+                f"- Текущий баланс: {analytics['balance']}\n"
+                f"- Входящих транзакций USDT за 24 ч: {analytics['incoming_24h']} 📈\n"
+                f"- Исходящих транзакций USDT за 24 ч: {analytics['outgoing_24h']} 📉\n"
+                f"- Приблизительный баланс: {analytics['estimated_balance']}\n"
+                f"- Тип: {analytics['exchange']}",
+                reply_markup=menu_keyboard
+            )
+            return ConversationHandler.END
         elif context.user_data.get('action') == 'add':
-            await update.message.reply_text("Введите метку для кошелька (например, 'Мой личный' или оставьте пустым): 🏷️", reply_markup=keyboard)
-            return ENTER_LABEL_ADD
-    else:
-        if 'network' in context.user_data:
-            network = context.user_data['network']
-            if context.user_data.get('action') == 'check':
+            if 'label' not in context.user_data:
+                context.user_data['label'] = text.strip() or 'Без метки'
+                keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Назад", callback_data='back')]])
+                await update.message.reply_text("Введите адрес кошелька: ➕", reply_markup=keyboard)
+                return ENTER_WALLET_ADD
+            else:
+                label = context.user_data['label']
                 wallet = text.strip()
+                if not user_id:
+                    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Назад", callback_data='back')]])
+                    await update.message.reply_text("Ошибка: Не удалось определить пользователя. Попробуйте /start. ❌", reply_markup=keyboard)
+                    return ConversationHandler.END
                 if network == 'TRC20' and not wallet.startswith('T'):
                     keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Назад", callback_data='back')]])
                     await update.message.reply_text("Ошибка: Адрес TRC20 должен начинаться с 'T'. Попробуйте снова. ❌", reply_markup=keyboard)
-                    return ENTER_WALLET_CHECK
+                    return ENTER_WALLET_ADD
                 if network == 'ERC20' and not wallet.startswith('0x'):
                     keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Назад", callback_data='back')]])
                     await update.message.reply_text("Ошибка: Адрес ERC20 должен начинаться с '0x'. Попробуйте снова. ❌", reply_markup=keyboard)
-                    return ENTER_WALLET_CHECK
-                analytics = get_wallet_analytics(wallet, network, TRONGRID_API_KEY if network == 'TRC20' else ETHERSCAN_API_KEY)
-                menu_keyboard = InlineKeyboardMarkup([
-                    [InlineKeyboardButton("Меню", callback_data='menu')],
-                    [InlineKeyboardButton("Добавить на мониторинг", callback_data=f'add_monitor_{wallet}_{network}')]
-                ])
-                await update.message.reply_text(
-                    f"💰 Проверка баланса и аналитика для {network} кошелька {wallet}:\n"
-                    f"- Текущий баланс: {analytics['balance']}\n"
-                    f"- Входящих транзакций USDT за 24 ч: {analytics['incoming_24h']} 📈\n"
-                    f"- Исходящих транзакций USDT за 24 ч: {analytics['outgoing_24h']} 📉\n"
-                    f"- Приблизительный баланс: {analytics['estimated_balance']}\n"
-                    f"- Тип: {analytics['exchange']}",
-                    reply_markup=menu_keyboard
-                )
-                return ConversationHandler.END
-            elif context.user_data.get('action') == 'add':
-                if 'label' not in context.user_data:
-                    context.user_data['label'] = text.strip() or 'Без метки'
-                    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Назад", callback_data='back')]])
-                    await update.message.reply_text("Введите адрес кошелька: ➕", reply_markup=keyboard)
                     return ENTER_WALLET_ADD
-                else:
-                    label = context.user_data['label']
-                    wallet = text.strip()
-                    if not user_id:
-                        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Назад", callback_data='back')]])
-                        await update.message.reply_text("Ошибка: Не удалось определить пользователя. Попробуйте /start. ❌", reply_markup=keyboard)
-                        return ConversationHandler.END
-                    if network == 'TRC20' and not wallet.startswith('T'):
-                        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Назад", callback_data='back')]])
-                        await update.message.reply_text("Ошибка: Адрес TRC20 должен начинаться с 'T'. Попробуйте снова. ❌", reply_markup=keyboard)
-                        return ENTER_WALLET_ADD
-                    if network == 'ERC20' and not wallet.startswith('0x'):
-                        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Назад", callback_data='back')]])
-                        await update.message.reply_text("Ошибка: Адрес ERC20 должен начинаться с '0x'. Попробуйте снова. ❌", reply_markup=keyboard)
-                        return ENTER_WALLET_ADD
-                    try:
-                        add_wallet(user_id, wallet, network, label)
-                        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Назад", callback_data='back')]])
-                        await update.message.reply_text(f"Кошелек {wallet} ({network}) с меткой '{label}' добавлен для мониторинга. 🔔 Вы получите уведомление при увеличении баланса на 1500+ USDT.", reply_markup=keyboard)
-                    except Exception as e:
-                        logging.error(f"Ошибка при добавлении кошелька для user_id {user_id}: {e}")
-                        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Назад", callback_data='back')]])
-                        await update.message.reply_text("Ошибка при добавлении кошелька. Попробуйте позже или /start. ❌", reply_markup=keyboard)
-                    return ConversationHandler.END
+                try:
+                    add_wallet(user_id, wallet, network, label)
+                    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Назад", callback_data='back')]])
+                    await update.message.reply_text(f"Кошелек {wallet} ({network}) с меткой '{label}' добавлен для мониторинга. 🔔 Вы получите уведомление при увеличении баланса на 1500+ USDT.", reply_markup=keyboard)
+                except Exception as e:
+                    logging.error(f"Ошибка при добавлении кошелька для user_id {user_id}: {e}")
+                    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Назад", callback_data='back')]])
+                    await update.message.reply_text("Ошибка при добавлении кошелька. Попробуйте позже или /start. ❌", reply_markup=keyboard)
+                return ConversationHandler.END
 
     keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Назад", callback_data='back')]])
     await update.message.reply_text("Не понял команду. Выберите действие:", reply_markup=MAIN_KEYBOARD)
@@ -205,9 +225,9 @@ def main():
     conv_handler = ConversationHandler(
         entry_points=[MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)],
         states={
-            SELECT_NETWORK_CHECK: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)],
+            SELECT_NETWORK_CHECK: [CallbackQueryHandler(handle_callback)],
             ENTER_WALLET_CHECK: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)],
-            SELECT_NETWORK_ADD: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)],
+            SELECT_NETWORK_ADD: [CallbackQueryHandler(handle_callback)],
             ENTER_LABEL_ADD: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)],
             ENTER_WALLET_ADD: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)],
         },
@@ -226,3 +246,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
