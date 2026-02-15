@@ -14,10 +14,6 @@ MAIN_KEYBOARD = ReplyKeyboardMarkup([
     [KeyboardButton("➕ Добавить кошелек"), KeyboardButton("📋 Мои кошельки")]
 ], resize_keyboard=True, one_time_keyboard=False)
 
-NETWORK_KEYBOARD = ReplyKeyboardMarkup([
-    [KeyboardButton("🔗 TRC20"), KeyboardButton("🔗 ERC20")]
-], resize_keyboard=True, one_time_keyboard=False)
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text("Привет! 👋 Выберите действие:", reply_markup=MAIN_KEYBOARD)
 
@@ -30,6 +26,26 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if data == 'back':
         await query.edit_message_text("Привет! 👋 Выберите действие:", reply_markup=MAIN_KEYBOARD)
         return None
+    elif data == 'check_trc20':
+        context.user_data['network'] = 'TRC20'
+        context.user_data['action'] = 'check'
+        await query.edit_message_text("Введите адрес кошелька для проверки баланса и аналитики: 🔍", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Выход в главное меню", callback_data='back')]]))
+        return ENTER_WALLET_CHECK
+    elif data == 'check_erc20':
+        context.user_data['network'] = 'ERC20'
+        context.user_data['action'] = 'check'
+        await query.edit_message_text("Введите адрес кошелька для проверки баланса и аналитики: 🔍", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Выход в главное меню", callback_data='back')]]))
+        return ENTER_WALLET_CHECK
+    elif data == 'add_trc20':
+        context.user_data['network'] = 'TRC20'
+        context.user_data['action'] = 'add'
+        await query.edit_message_text("Введите метку для кошелька (например, 'Мой личный' или оставьте пустым): 🏷️", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Выход в главное меню", callback_data='back')]]))
+        return ENTER_LABEL_ADD
+    elif data == 'add_erc20':
+        context.user_data['network'] = 'ERC20'
+        context.user_data['action'] = 'add'
+        await query.edit_message_text("Введите метку для кошелька (например, 'Мой личный' или оставьте пустым): 🏷️", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Выход в главное меню", callback_data='back')]]))
+        return ENTER_LABEL_ADD
     elif data.startswith('add_monitor_'):
         wallet = data.split('_')[2]
         network = data.split('_')[3]
@@ -59,12 +75,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         )
         return None
     elif text == "💰 Проверить баланс":
-        await update.message.reply_text("Выберите сеть для проверки баланса: 🔍", reply_markup=NETWORK_KEYBOARD)
-        context.user_data['action'] = 'check'
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔗 TRC20", callback_data='check_trc20')],
+            [InlineKeyboardButton("🔗 ERC20", callback_data='check_erc20')],
+            [InlineKeyboardButton("Выход в главное меню", callback_data='back')]
+        ])
+        await update.message.reply_text("Выберите сеть для проверки баланса: 🔍", reply_markup=keyboard)
         return SELECT_NETWORK_CHECK
     elif text == "➕ Добавить кошелек":
-        await update.message.reply_text("Выберите сеть для добавления кошелька на мониторинг: ➕", reply_markup=NETWORK_KEYBOARD)
-        context.user_data['action'] = 'add'
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔗 TRC20", callback_data='add_trc20')],
+            [InlineKeyboardButton("🔗 ERC20", callback_data='add_erc20')],
+            [InlineKeyboardButton("Выход в главное меню", callback_data='back')]
+        ])
+        await update.message.reply_text("Выберите сеть для добавления кошелька на мониторинг: ➕", reply_markup=keyboard)
         return SELECT_NETWORK_ADD
     elif text == "📋 Мои кошельки":
         try:
@@ -78,32 +102,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             logging.error(f"Ошибка при получении кошельков для user_id {user_id}: {e}")
             await update.message.reply_text("Ошибка при загрузке кошельков. Попробуйте позже. ❌", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Выход в главное меню", callback_data='back')]]))
         return None
-    elif text == "🔗 TRC20":
-        context.user_data['network'] = 'TRC20'
-        if context.user_data.get('action') == 'check':
-            await update.message.reply_text("Введите адрес кошелька для проверки баланса и аналитики: 🔍", reply_markup=MAIN_KEYBOARD)
-            return ENTER_WALLET_CHECK
-        elif context.user_data.get('action') == 'add':
-            await update.message.reply_text("Введите метку для кошелька (например, 'Мой личный' или оставьте пустым): 🏷️", reply_markup=MAIN_KEYBOARD)
-            return ENTER_LABEL_ADD
-    elif text == "🔗 ERC20":
-        context.user_data['network'] = 'ERC20'
-        if context.user_data.get('action') == 'check':
-            await update.message.reply_text("Введите адрес кошелька для проверки баланса и аналитики: 🔍", reply_markup=MAIN_KEYBOARD)
-            return ENTER_WALLET_CHECK
-        elif context.user_data.get('action') == 'add':
-            await update.message.reply_text("Введите метку для кошелька (например, 'Мой личный' или оставьте пустым): 🏷️", reply_markup=MAIN_KEYBOARD)
-            return ENTER_LABEL_ADD
     else:
         if 'network' in context.user_data:
             network = context.user_data['network']
             if context.user_data.get('action') == 'check':
                 wallet = text.strip()
                 if network == 'TRC20' and not wallet.startswith('T'):
-                    await update.message.reply_text("Ошибка: Адрес TRC20 должен начинаться с 'T'. Попробуйте снова. ❌", reply_markup=MAIN_KEYBOARD)
+                    await update.message.reply_text("Ошибка: Адрес TRC20 должен начинаться с 'T'. Попробуйте снова. ❌", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Выход в главное меню", callback_data='back')]]))
                     return ENTER_WALLET_CHECK
                 if network == 'ERC20' and not wallet.startswith('0x'):
-                    await update.message.reply_text("Ошибка: Адрес ERC20 должен начинаться с '0x'. Попробуйте снова. ❌", reply_markup=MAIN_KEYBOARD)
+                    await update.message.reply_text("Ошибка: Адрес ERC20 должен начинаться с '0x'. Попробуйте снова. ❌", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Выход в главное меню", callback_data='back')]]))
                     return ENTER_WALLET_CHECK
                 analytics = get_wallet_analytics(wallet, network, TRONGRID_API_KEY if network == 'TRC20' else ETHERSCAN_API_KEY)
                 menu_keyboard = InlineKeyboardMarkup([
@@ -123,7 +131,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             elif context.user_data.get('action') == 'add':
                 if 'label' not in context.user_data:
                     context.user_data['label'] = text.strip() or 'Без метки'
-                    await update.message.reply_text("Введите адрес кошелька: ➕", reply_markup=MAIN_KEYBOARD)
+                    await update.message.reply_text("Введите адрес кошелька: ➕", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Выход в главное меню", callback_data='back')]]))
                     return ENTER_WALLET_ADD
                 else:
                     label = context.user_data['label']
@@ -132,10 +140,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                         await update.message.reply_text("Ошибка: Не удалось определить пользователя. Попробуйте /start. ❌", reply_markup=MAIN_KEYBOARD)
                         return ConversationHandler.END
                     if network == 'TRC20' and not wallet.startswith('T'):
-                        await update.message.reply_text("Ошибка: Адрес TRC20 должен начинаться с 'T'. Попробуйте снова. ❌", reply_markup=MAIN_KEYBOARD)
+                        await update.message.reply_text("Ошибка: Адрес TRC20 должен начинаться с 'T'. Попробуйте снова. ❌", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Выход в главное меню", callback_data='back')]]))
                         return ENTER_WALLET_ADD
                     if network == 'ERC20' and not wallet.startswith('0x'):
-                        await update.message.reply_text("Ошибка: Адрес ERC20 должен начинаться с '0x'. Попробуйте снова. ❌", reply_markup=MAIN_KEYBOARD)
+                        await update.message.reply_text("Ошибка: Адрес ERC20 должен начинаться с '0x'. Попробуйте снова. ❌", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Выход в главное меню", callback_data='back')]]))
                         return ENTER_WALLET_ADD
                     try:
                         add_wallet(user_id, wallet, network, label)
@@ -178,9 +186,9 @@ def main():
     conv_handler = ConversationHandler(
         entry_points=[MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)],
         states={
-            SELECT_NETWORK_CHECK: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)],
+            SELECT_NETWORK_CHECK: [CallbackQueryHandler(handle_callback)],
             ENTER_WALLET_CHECK: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)],
-            SELECT_NETWORK_ADD: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)],
+            SELECT_NETWORK_ADD: [CallbackQueryHandler(handle_callback)],
             ENTER_LABEL_ADD: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)],
             ENTER_WALLET_ADD: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)],
         },
@@ -199,5 +207,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
