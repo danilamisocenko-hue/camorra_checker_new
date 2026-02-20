@@ -137,23 +137,24 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         return SELECT_NETWORK_ADD
     
     elif data == 'my_wallets':
-        try:
-            wallets = get_user_wallets(user_id)
-            if not wallets:
-                keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Выход в главное меню", callback_data='back')]])
-                await query.message.reply_text("У вас нет добавленных кошельков. ➕ Добавьте первый!", reply_markup=keyboard)
-            else:
-                for wallet, network, _, label in wallets:
-                    keyboard = InlineKeyboardMarkup([
-                        [InlineKeyboardButton("❌ Удалить", callback_data=f'delete_{wallet}_{network}')],
-                        [InlineKeyboardButton("Выход в главное меню", callback_data='back')]
-                    ])
-                    await query.message.reply_text(f"🏷️ {label}\n`{wallet}`\nСеть: {network}", reply_markup=keyboard, parse_mode='Markdown')
-        except Exception as e:
-            logger.error(f"Ошибка при получении кошельков для user_id {user_id}: {e}")
+    try:
+        wallets = get_user_wallets(user_id)
+        if not wallets:
             keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Выход в главное меню", callback_data='back')]])
-            await query.message.reply_text("❌ Ошибка при загрузке кошельков. Попробуйте позже.", reply_markup=keyboard)
-        return None
+            await query.message.reply_text("У вас нет добавленных кошельков. ➕ Добавьте первый!", reply_markup=keyboard)
+        else:
+            for wallet, network, _, label in wallets:
+                label_display = label if label else "Без метки"  # Исправление
+                keyboard = InlineKeyboardMarkup([
+                    [InlineKeyboardButton("❌ Удалить", callback_data=f'delete_{wallet}_{network}')],
+                    [InlineKeyboardButton("Выход в главное меню", callback_data='back')]
+                ])
+                await query.message.reply_text(f"🏷️ {label_display}\n`{wallet}`\nСеть: {network}", reply_markup=keyboard, parse_mode='Markdown')
+    except Exception as e:
+        logger.error(f"Ошибка при получении кошельков для user_id {user_id}: {e}")
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Выход в главное меню", callback_data='back')]])
+        await query.message.reply_text("❌ Ошибка при загрузке кошельков. Попробуйте позже.", reply_markup=keyboard)
+    return None
     
     elif data.startswith('delete_'):
         parts = data.split('_')
@@ -356,3 +357,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
