@@ -209,13 +209,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             api_key = TRONGRID_API_KEY if network == 'TRC20' else ETHERSCAN_API_KEY
             analytics = get_wallet_analytics(wallet, network, api_key)
             
+            # Ссылки на сканеры
+            if network == 'TRC20':
+                scan_link = f"https://tronscan.org/#/address/{wallet}"
+            else:
+                scan_link = f"https://etherscan.io/address/{wallet}"
+            
             menu_keyboard = InlineKeyboardMarkup([
                 [InlineKeyboardButton("➕ Добавить на мониторинг", callback_data=f'add_monitor_{wallet}_{network}')],
+                [InlineKeyboardButton("🌐 Открыть в сканере", url=scan_link)],
                 [InlineKeyboardButton("Выход в главное меню", callback_data='back')]
             ])
             
             await update.message.reply_text(
-                f"💰 Проверка баланса и аналитика\nСеть: {network}\nКошелек: `{wallet}`\n\n"
+                f"💰 Проверка баланса и аналитика\nСеть: {network}\nКошелек: `{wallet}`\n[Открыть в сканере]({scan_link})\n\n"
                 f"• Текущий баланс: {analytics['balance']}\n"
                 f"• Входящих USDT за 24ч: {analytics['incoming_24h']} 📈\n"
                 f"• Исходящих USDT за 24ч: {analytics['outgoing_24h']} 📉\n"
@@ -276,6 +283,12 @@ async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     return ConversationHandler.END
 
 
+async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Выход в главное меню", callback_data='back')]])
+    await update.message.reply_text("Действие отменено. ❌", reply_markup=keyboard)
+    return ConversationHandler.END
+
+
 async def monitor_wallets(context: ContextTypes.DEFAULT_TYPE):
     try:
         wallets = get_all_wallets()
@@ -300,26 +313,29 @@ def main():
     application = Application.builder().token(BOT_TOKEN).build()
 
     conv_handler = ConversationHandler(
-    entry_points=[MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)],
-    states={
-        SELECT_NETWORK_CHECK: [CallbackQueryHandler(handle_callback)],
-        ENTER_WALLET_CHECK: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)],
-        SELECT_NETWORK_ADD: [CallbackQueryHandler(handle_callback)],
-        ENTER_LABEL_ADD: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)],
-        ENTER_WALLET_ADD: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)],
-    },
-    fallbacks=[CommandHandler("cancel", cancel_command)],
-    conversation_timeout=30
-)
+        entry_points=[MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)],
+        states={
+            SELECT_NETWORK_CHECK: [CallbackQueryHandler(handle_callback)],
+            ENTER_WALLET_CHECK: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)],
+            SELECT_NETWORK_ADD: [CallbackQueryHandler(handle_callback)],
+            ENTER_LABEL_ADD: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)],
+            ENTER_WALLET_ADD: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel_command)],
+        conversation_timeout=30
+    )
 
-application.add_handler(CommandHandler("start", start_command))
-application.add_handler(CommandHandler("broadcast", broadcast_command))
-application.add_handler(conv_handler)
-application.add_handler(CallbackQueryHandler(handle_callback))
+    application.add_handler(CommandHandler("start", start_command))
+    application.add_handler(CommandHandler("broadcast", broadcast_command))
+    application.add_handler(conv_handler)
+    application.add_handler(CallbackQueryHandler(handle_callback))
 
-job_queue = application.job_queue
-job_queue.run_repeating(monitor_wallets, interval=3600, first=10)
+    job_queue = application.job_queue
+    job_queue.run_repeating(monitor_wallets, interval=3600, first=10)
 
-print("Бот запущен!")
-application.run_polling()
-if name == 'main': main()
+    print("Бот запущен!")
+    application.run_polling()
+
+
+if __name__ == '__main__':
+    main()
