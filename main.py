@@ -1,47 +1,20 @@
 """
 Telegram Bot для мониторинга USDT кошельков
-Автор: Camorra Checker
 """
 
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    MessageHandler,
-    filters,
-    ContextTypes,
-    ConversationHandler,
-    CallbackQueryHandler
-)
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler, CallbackQueryHandler
 from config import BOT_TOKEN, TRONGRID_API_KEY, ETHERSCAN_API_KEY
 from bot_logic import get_usdt_balance_trc20, get_usdt_balance_erc20, get_wallet_analytics
-from db import (
-    init_db,
-    add_wallet,
-    get_user_wallets,
-    update_balance,
-    get_all_wallets,
-    delete_wallet,
-    get_all_users,
-    add_user
-)
+from db import init_db, add_wallet, get_user_wallets, update_balance, get_all_wallets, delete_wallet, get_all_users, add_user
 import logging
 
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-(
-    SELECT_NETWORK_CHECK,
-    ENTER_WALLET_CHECK,
-    SELECT_NETWORK_ADD,
-    ENTER_LABEL_ADD,
-    ENTER_WALLET_ADD
-) = range(5)
+SELECT_NETWORK_CHECK, ENTER_WALLET_CHECK, SELECT_NETWORK_ADD, ENTER_LABEL_ADD, ENTER_WALLET_ADD = range(5)
 
-OWNER_ID = 123456789
+OWNER_ID = 123456789  # ЗАМЕНИТЕ НА СВОЙ TELEGRAM ID
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -137,24 +110,24 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         return SELECT_NETWORK_ADD
     
     elif data == 'my_wallets':
-    try:
-        wallets = get_user_wallets(user_id)
-        if not wallets:
+        try:
+            wallets = get_user_wallets(user_id)
+            if not wallets:
+                keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Выход в главное меню", callback_data='back')]])
+                await query.message.reply_text("У вас нет добавленных кошельков. ➕ Добавьте первый!", reply_markup=keyboard)
+            else:
+                for wallet, network, _, label in wallets:
+                    label_display = label if label else "Без метки"
+                    keyboard = InlineKeyboardMarkup([
+                        [InlineKeyboardButton("❌ Удалить", callback_data=f'delete_{wallet}_{network}')],
+                        [InlineKeyboardButton("Выход в главное меню", callback_data='back')]
+                    ])
+                    await query.message.reply_text(f"🏷️ {label_display}\n`{wallet}`\nСеть: {network}", reply_markup=keyboard, parse_mode='Markdown')
+        except Exception as e:
+            logger.error(f"Ошибка при получении кошельков для user_id {user_id}: {e}")
             keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Выход в главное меню", callback_data='back')]])
-            await query.message.reply_text("У вас нет добавленных кошельков. ➕ Добавьте первый!", reply_markup=keyboard)
-        else:
-            for wallet, network, _, label in wallets:
-                label_display = label if label else "Без метки"  # Исправление
-                keyboard = InlineKeyboardMarkup([
-                    [InlineKeyboardButton("❌ Удалить", callback_data=f'delete_{wallet}_{network}')],
-                    [InlineKeyboardButton("Выход в главное меню", callback_data='back')]
-                ])
-                await query.message.reply_text(f"🏷️ {label_display}\n`{wallet}`\nСеть: {network}", reply_markup=keyboard, parse_mode='Markdown')
-    except Exception as e:
-        logger.error(f"Ошибка при получении кошельков для user_id {user_id}: {e}")
-        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Выход в главное меню", callback_data='back')]])
-        await query.message.reply_text("❌ Ошибка при загрузке кошельков. Попробуйте позже.", reply_markup=keyboard)
-    return None
+            await query.message.reply_text("❌ Ошибка при загрузке кошельков. Попробуйте позже.", reply_markup=keyboard)
+        return None
     
     elif data.startswith('delete_'):
         parts = data.split('_')
@@ -242,9 +215,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             ])
             
             await update.message.reply_text(
-                f"💰 Проверка баланса и аналитика\n"
-                f"Сеть: {network}\n"
-                f"Кошелек: `{wallet}`\n\n"
+                f"💰 Проверка баланса и аналитика\nСеть: {network}\nКошелек: `{wallet}`\n\n"
                 f"• Текущий баланс: {analytics['balance']}\n"
                 f"• Входящих USDT за 24ч: {analytics['incoming_24h']} 📈\n"
                 f"• Исходящих USDT за 24ч: {analytics['outgoing_24h']} 📉\n"
@@ -284,10 +255,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                     add_wallet(user_id, wallet, network, label)
                     keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Выход в главное меню", callback_data='back')]])
                     await update.message.reply_text(
-                        f"✅ Кошелек добавлен для мониторинга:\n"
-                        f"`{wallet}` ({network})\n"
-                        f"Метка: {label}\n\n"
-                        f"🔔 Вы получите уведомление при балансе 1500+ USDT.",
+                        f"✅ Кошелек добавлен для мониторинга:\n`{wallet}` ({network})\nМетка: {label}\n\n🔔 Вы получите уведомление при балансе 1500+ USDT.",
                         reply_markup=keyboard,
                         parse_mode='Markdown'
                     )
@@ -332,29 +300,26 @@ def main():
     application = Application.builder().token(BOT_TOKEN).build()
 
     conv_handler = ConversationHandler(
-        entry_points=[MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)],
-        states={
-            SELECT_NETWORK_CHECK: [CallbackQueryHandler(handle_callback)],
-            ENTER_WALLET_CHECK: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)],
-            SELECT_NETWORK_ADD: [CallbackQueryHandler(handle_callback)],
-            ENTER_LABEL_ADD: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)],
-            ENTER_WALLET_ADD: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)],
-        },
-        fallbacks=[CommandHandler("cancel", cancel_command)],
-        conversation_timeout=30
-    )
+    entry_points=[MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)],
+    states={
+        SELECT_NETWORK_CHECK: [CallbackQueryHandler(handle_callback)],
+        ENTER_WALLET_CHECK: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)],
+        SELECT_NETWORK_ADD: [CallbackQueryHandler(handle_callback)],
+        ENTER_LABEL_ADD: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)],
+        ENTER_WALLET_ADD: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)],
+    },
+    fallbacks=[CommandHandler("cancel", cancel_command)],
+    conversation_timeout=30
+)
 
-    application.add_handler(CommandHandler("start", start_command))
-    application.add_handler(CommandHandler("broadcast", broadcast_command))
-    application.add_handler(conv_handler)
-    application.add_handler(CallbackQueryHandler(handle_callback))
+application.add_handler(CommandHandler("start", start_command))
+application.add_handler(CommandHandler("broadcast", broadcast_command))
+application.add_handler(conv_handler)
+application.add_handler(CallbackQueryHandler(handle_callback))
 
-    job_queue = application.job_queue
-    job_queue.run_repeating(monitor_wallets, interval=3600, first=10)
+job_queue = application.job_queue
+job_queue.run_repeating(monitor_wallets, interval=3600, first=10)
 
-    application.run_polling()
-
-
-if __name__ == '__main__':
-    main()
-
+print("Бот запущен!")
+application.run_polling()
+if name == 'main': main()
