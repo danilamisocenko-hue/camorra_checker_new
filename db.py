@@ -29,7 +29,6 @@ def init_db():
         conn.commit()
         conn.close()
     else:
-        # Добавить таблицу users, если её нет (для старых БД)
         conn = sqlite3.connect(DB_NAME)
         cursor = conn.cursor()
         cursor.execute("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER UNIQUE NOT NULL, username TEXT, first_name TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
