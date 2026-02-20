@@ -2,14 +2,25 @@ from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler, CallbackQueryHandler
 from config import BOT_TOKEN, TRONGRID_API_KEY, ETHERSCAN_API_KEY
 from bot_logic import get_usdt_balance_trc20, get_usdt_balance_erc20, get_wallet_analytics
-from db import init_db, add_wallet, get_user_wallets, update_balance, get_all_wallets
+from db import init_db, add_wallet, get_user_wallets, update_balance, get_all_wallets, delete_wallet, get_all_users, add_user
 import logging
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
 SELECT_NETWORK_CHECK, ENTER_WALLET_CHECK, SELECT_NETWORK_ADD, ENTER_LABEL_ADD, ENTER_WALLET_ADD = range(5)
 
+# Ваш ID для команды /broadcast
+OWNER_ID = 123456789  # ЗАМЕНИТЕ НА СВОЙ TELEGRAM ID
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = update.effective_user.id if update.effective_user else None
+    username = update.effective_user.username if update.effective_user else None
+    first_name = update.effective_user.first_name if update.effective_user else None
+    
+    # Сохраняем пользователя в БД
+    if user_id:
+        add_user(user_id, username, first_name)
+    
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("❓ FAQ", callback_data='faq')],
         [InlineKeyboardButton("💰 Проверить баланс", callback_data='check_balance')],
@@ -17,6 +28,36 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         [InlineKeyboardButton("📋 Мои кошельки", callback_data='my_wallets')]
     ])
     await update.message.reply_text("Привет! 👋 Выберите действие:", reply_markup=keyboard)
+
+async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = update.effective_user.id if update.effective_user else None
+    
+    if user_id != OWNER_ID:
+        await update.message.reply_text("У вас нет доступа к этой команде. ❌")
+        return
+    
+    if not context.args:
+        await update.message.reply_text("Использование: /broadcast <сообщение>")
+        return
+    
+    message = ' '.join(context.args)
+    users = get_all_users()
+    
+    if not users:
+        await update.message.reply_text("Нет пользователей для рассылки. ❌")
+        return
+    
+    success = 0
+    failed = 0
+    for user in users:
+        try:
+            await context.bot.send_message(chat_id=user, text=f"📢 Сообщение от бота:\n\n{message}")
+            success += 1
+        except Exception as e:
+            logging.error(f"Ошибка отправки пользователю {user}: {e}")
+            failed += 1
+    
+    await update.message.reply_text(f"Рассылка завершена.\n✅ Успешно: {success}\n❌ Ошибки: {failed}")
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
@@ -69,13 +110,29 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Выход в главное меню", callback_data='back')]])
                 await query.message.reply_text("У вас нет добавленных кошельков. ➕ Добавьте первый!", reply_markup=keyboard)
             else:
-                wallet_list = "\n".join([f"🏷️ {label}: {wallet} ({network})" for wallet, network, _, label in wallets])
-                keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Выход в главное меню", callback_data='back')]])
-                await query.message.reply_text(f"📋 Ваши кошельки:\n{wallet_list}", reply_markup=keyboard)
+                for wallet, network, _, label in wallets:
+                    keyboard = InlineKeyboardMarkup([
+                        [InlineKeyboardButton("Удалить", callback_data=f'delete_{wallet}_{network}')],
+                        [InlineKeyboardButton("Выход в главное меню", callback_data='back')]
+                    ])
+                    await query.message.reply_text(f"🏷️ {label}: {wallet} ({network})", reply_markup=keyboard)
         except Exception as e:
             logging.error(f"Ошибка при получении кошельков для user_id {user_id}: {e}")
             keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Выход в главное меню", callback_data='back')]])
             await query.message.reply_text("Ошибка при загрузке кошельков. Попробуйте позже. ❌", reply_markup=keyboard)
+        return None
+    elif data.startswith('delete_'):
+        parts = data.split('_')
+        wallet = parts[1]
+        network = parts[2]
+        try:
+            delete_wallet(user_id, wallet, network)
+            keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Выход в главное меню", callback_data='back')]])
+            await query.message.reply_text(f"Кошелек {wallet} ({network}) удален из мониторинга. ❌", reply_markup=keyboard)
+        except Exception as e:
+            logging.error(f"Ошибка при удалении кошелька для user_id {user_id}: {e}")
+            keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Выход в главное меню", callback_data='back')]])
+            await query.message.reply_text("Ошибка при удалении кошелька. Попробуйте позже. ❌", reply_markup=keyboard)
         return None
     elif data == 'check_trc20':
         context.user_data['network'] = 'TRC20'
@@ -154,80 +211,3 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             else:
                 label = context.user_data['label']
                 wallet = text.strip()
-                if not user_id:
-                    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Выход в главное меню", callback_data='back')]])
-                    await update.message.reply_text("Ошибка: Не удалось определить пользователя. Попробуйте /start. ❌", reply_markup=keyboard)
-                    return ConversationHandler.END
-                if network == 'TRC20' and not wallet.startswith('T'):
-                    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Выход в главное меню", callback_data='back')]])
-                    await update.message.reply_text("Ошибка: Адрес TRC20 должен начинаться с 'T'. Попробуйте снова. ❌", reply_markup=keyboard)
-                    return ENTER_WALLET_ADD
-                if network == 'ERC20' and not wallet.startswith('0x'):
-                    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Выход в главное меню", callback_data='back')]])
-                    await update.message.reply_text("Ошибка: Адрес ERC20 должен начинаться с '0x'. Попробуйте снова. ❌", reply_markup=keyboard)
-                    return ENTER_WALLET_ADD
-                try:
-                    add_wallet(user_id, wallet, network, label)
-                    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Выход в главное меню", callback_data='back')]])
-                    await update.message.reply_text(f"Кошелек {wallet} ({network}) с меткой '{label}' добавлен для мониторинга. 🔔 Вы получите уведомление при балансе 1500+ USDT.", reply_markup=keyboard)
-                except Exception as e:
-                    logging.error(f"Ошибка при добавлении кошелька для user_id {user_id}: {e}")
-                    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Выход в главное меню", callback_data='back')]])
-                    await update.message.reply_text("Ошибка при добавлении кошелька. Попробуйте позже. ❌", reply_markup=keyboard)
-                return ConversationHandler.END
-
-    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Выход в главное меню", callback_data='back')]])
-    await update.message.reply_text("Не понял команду. Выберите действие:", reply_markup=keyboard)
-    return None
-
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Выход в главное меню", callback_data='back')]])
-    await update.message.reply_text("Действие отменено. ❌", reply_markup=keyboard)
-    return ConversationHandler.END
-
-async def monitor_wallets(context: ContextTypes.DEFAULT_TYPE):
-    try:
-        wallets = get_all_wallets()
-        for user_id, wallet, network, last_balance, label in wallets:
-            if network == 'TRC20':
-                current_balance, _ = get_usdt_balance_trc20(wallet, TRONGRID_API_KEY)
-            else:
-                current_balance, _ = get_usdt_balance_erc20(wallet, ETHERSCAN_API_KEY)
-            
-            if current_balance >= 1500 and last_balance < 1500:  # Уведомление при балансе >= 1500 USDT
-                await context.bot.send_message(
-                    chat_id=user_id,
-                    text=f"🔔 Уведомление: Баланс на кошельке '{label}' ({wallet}, {network}) достиг {current_balance:.6f} USDT (больше 1500 USDT)."
-                )
-                update_balance(user_id, wallet, network, current_balance)
-    except Exception as e:
-        logging.error(f"Ошибка в мониторинге: {e}")
-
-def main():
-    init_db()
-    application = Application.builder().token(BOT_TOKEN).build()
-
-    conv_handler = ConversationHandler(
-        entry_points=[MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)],
-        states={
-            SELECT_NETWORK_CHECK: [CallbackQueryHandler(handle_callback)],
-            ENTER_WALLET_CHECK: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)],
-            SELECT_NETWORK_ADD: [CallbackQueryHandler(handle_callback)],
-            ENTER_LABEL_ADD: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)],
-            ENTER_WALLET_ADD: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)],
-        },
-        fallbacks=[CommandHandler("cancel", cancel)],
-        conversation_timeout=30
-    )
-
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(conv_handler)
-    application.add_handler(CallbackQueryHandler(handle_callback))
-
-    job_queue = application.job_queue
-    job_queue.run_repeating(monitor_wallets, interval=3600, first=10)
-
-    application.run_polling()
-
-if __name__ == '__main__':
-    main()
