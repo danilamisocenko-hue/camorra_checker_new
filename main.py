@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 SELECT_NETWORK_CHECK, ENTER_WALLET_CHECK, SELECT_NETWORK_ADD, ENTER_LABEL_ADD, ENTER_WALLET_ADD = range(5)
 
-OWNER_ID = 123456789  # ЗАМЕНИТЕ НА СВОЙ TELEGRAM ID
+OWNER_ID = 7788251820  # ЗАМЕНИТЕ НА СВОЙ TELEGRAM ID
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -339,3 +339,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
