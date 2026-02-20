@@ -23,7 +23,8 @@ def init_db():
                 wallet_address TEXT NOT NULL,
                 network TEXT NOT NULL,
                 last_balance REAL DEFAULT 0,
-                label TEXT DEFAULT 'Без метки'
+                label TEXT DEFAULT 'Без метки',
+                UNIQUE(user_id, wallet_address, network)
             )
         ''')
         conn.commit()
@@ -53,9 +54,12 @@ def get_all_users():
 def add_wallet(user_id, wallet_address, network, label='Без метки'):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    cursor.execute("INSERT INTO wallets (user_id, wallet_address, network, label) VALUES (?, ?, ?, ?)", 
-                  (user_id, wallet_address, network, label))
-    conn.commit()
+    try:
+        cursor.execute("INSERT INTO wallets (user_id, wallet_address, network, label) VALUES (?, ?, ?, ?)", 
+                      (user_id, wallet_address, network, label))
+        conn.commit()
+    except sqlite3.IntegrityError:
+        pass  # Кошелек уже существует
     conn.close()
 
 def get_user_wallets(user_id):
