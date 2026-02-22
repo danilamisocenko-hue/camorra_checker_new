@@ -8,8 +8,8 @@ from telegram.ext import (
     Application, CommandHandler, MessageHandler, 
     filters, ContextTypes, ConversationHandler, CallbackQueryHandler
 )
-from config import BOT_TOKEN, TRONGRID_API_KEY, ETHERSCAN_API_KEY
-from bot_logic import get_wallet_analytics
+from config import BOT_TOKEN, TRONGRID_API_KEY, ETHERSCAN_API_KEY, ADMINS
+from bot_logic import get_wallet_analytics, get_usdt_balance_trc20, get_usdt_balance_erc20
 from db import init_db, add_wallet, get_user_wallets, update_balance, get_all_wallets, delete_wallet, get_all_users, add_user
 
 logging.basicConfig(
@@ -19,7 +19,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 SELECT_NETWORK_CHECK, ENTER_WALLET_CHECK, SELECT_NETWORK_ADD, ENTER_LABEL_ADD, ENTER_WALLET_ADD, CONFIRM_DELETE = range(6)
-OWNER_ID = 7788251820
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -33,12 +32,17 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         [InlineKeyboardButton("Добавить кошелек", callback_data='add_wallet')],
         [InlineKeyboardButton("Мои кошельки", callback_data='my_wallets')]
     ])
+    
+    # Добавляем кнопку админа если пользователь админ
+    if user.id in ADMINS:
+        keyboard.inline_keyboard.append([InlineKeyboardButton("🔧 Админ-панель", callback_data='admin_panel')])
+    
     await update.message.reply_text("Привет! Выберите действие:", reply_markup=keyboard)
 
 
 async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
-    if user.id != OWNER_ID:
+    if user.id not in ADMINS:
         await update.message.reply_text("Нет доступа.")
         return
     
@@ -54,13 +58,13 @@ async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     
     for user_id in users:
         try:
-            await context.bot.send_message(chat_id=user_id, text=f"Сообщение: {message}")
+            await context.bot.send_message(chat_id=user_id, text=f"📢 Рассылка:\n\n{message}")
             success += 1
         except Exception as e:
-            logger.error(f"Ошибка отправки {user_id}: {e}")
+            logger.error(f"Ошибка {user_id}: {e}")
             failed += 1
     
-    await update.message.reply_text(f"Готово! Успешно: {success}, Ошибки: {failed}")
+    await update.message.reply_text(f"Готово!\nУспешно: {success}\nОшибки: {failed}")
 
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -76,12 +80,56 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("Добавить кошелек", callback_data='add_wallet')],
             [InlineKeyboardButton("Мои кошельки", callback_data='my_wallets')]
         ])
-        await query.message.reply_text("Выберите действие:", reply_markup=keyboard)
+        if user_id in ADMINS:
+            keyboard.inline_keyboard.append([InlineKeyboardButton("🔧 Админ-панель", callback_data='admin_panel')])
+        await query.message.reply_text("Главное меню:", reply_markup=keyboard)
+        return
+    
+    # АДМИН ПАНЕЛЬ
+    elif data == 'admin_panel':
+        if user_id not in ADMINS:
+            await query.message.reply_text("Нет доступа!")
+            return
+        
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("📢 Рассылка", callback_data='admin_broadcast')],
+            [InlineKeyboardButton("📊 Статистика", callback_data='admin_stats')],
+            [InlineKeyboardButton("🔙 Назад", callback_data='back')]
+        ])
+        await query.message.reply_text("🔧 Админ-панель:", reply_markup=keyboard)
+        return
+    
+    elif data == 'admin_broadcast':
+        if user_id not in ADMINS:
+            return
+        context.user_data['action'] = 'admin_broadcast'
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Отмена", callback_data='admin_panel')]])
+        await query.message.reply_text("Введите текст рассылки:", reply_markup=keyboard)
+        return CONFIRM_DELETE
+    
+    elif data == 'admin_stats':
+        if user_id not in ADMINS:
+            return
+        users = get_all_users()
+        wallets = get_all_wallets()
+        
+        text = f"📊 *Статистика бота:*\n\n"
+        text += f"👥 Пользователей: {len(users)}\n"
+        text += f"💰 Кошельков на мониторинге: {len(wallets)}\n"
+        
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Назад", callback_data='admin_panel')]])
+        await query.message.reply_text(text, reply_markup=keyboard, parse_mode='Markdown')
         return
     
     elif data == 'faq':
         keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("В меню", callback_data='back')]])
-        await query.message.reply_text("FAQ: Бот проверяет баланс USDT на TRC20 и ERC20. Добавьте кошелек на мониторинг.", reply_markup=keyboard)
+        await query.message.reply_text(
+            "FAQ:\n\n"
+            "• Бот проверяет баланс USDT на TRC20 и ERC20\n"
+            "• Добавьте кошелек на мониторинг\n"
+            "• Получите уведомление когда баланс превысит 1500 USDT",
+            reply_markup=keyboard
+        )
         return
     
     elif data == 'check_balance':
@@ -111,17 +159,17 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ])
             await query.message.reply_text("Нет кошельков.", reply_markup=keyboard)
         else:
-            text = "Ваши кошельки:\n\n"
+            text = "📋 *Ваши кошельки:*\n\n"
             for i, (wallet, network, balance, label) in enumerate(wallets, 1):
                 label_disp = label if label else "Без метки"
                 text += f"{i}. {label_disp} ({network}) - {balance:.2f} USDT\n"
-                text += f"   {wallet}\n\n"
+                text += f"   `{wallet}`\n\n"
             
             keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton("Удалить", callback_data='delete_wallet')],
+                [InlineKeyboardButton("❌ Удалить", callback_data='delete_wallet')],
                 [InlineKeyboardButton("В меню", callback_data='back')]
             ])
-            await query.message.reply_text(text, reply_markup=keyboard)
+            await query.message.reply_text(text, reply_markup=keyboard, parse_mode='Markdown')
         return
     
     elif data == 'delete_wallet':
@@ -131,15 +179,18 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.message.reply_text("Нет кошельков.", reply_markup=keyboard)
             return
         
-        text = "Удаление кошелька. Введите номер:\n\n"
+        # ВАЖНО: Устанавливаем action = delete
+        context.user_data['action'] = 'delete'
+        
+        text = "❌ *Удаление кошелька*\n\nВведите номер:\n\n"
         for i, (wallet, network, balance, label) in enumerate(wallets, 1):
             label_disp = label if label else "Без метки"
-            text += f"{i}. {label_disp} ({network})\n   {wallet}\n\n"
+            text += f"{i}. {label_disp} ({network})\n   `{wallet}`\n\n"
         
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("Отмена", callback_data='my_wallets')]
         ])
-        await query.message.reply_text(text, reply_markup=keyboard)
+        await query.message.reply_text(text, reply_markup=keyboard, parse_mode='Markdown')
         return CONFIRM_DELETE
     
     elif data == 'check_trc20':
@@ -177,7 +228,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             add_wallet(user_id, wallet, network, 'Без метки')
             keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("В меню", callback_data='back')]])
-            await query.message.reply_text(f"Добавлено! {wallet} ({network})", reply_markup=keyboard)
+            await query.message.reply_text(f"✅ Добавлено! {wallet} ({network})", reply_markup=keyboard)
         except Exception as e:
             logger.error(f"Ошибка: {e}")
             keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("В меню", callback_data='back')]])
@@ -190,6 +241,27 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = user.id if user else None
     
+    # РАССЫЛКА АДМИНА
+    if context.user_data.get('action') == 'admin_broadcast':
+        if user_id not in ADMINS:
+            return ConversationHandler.END
+        
+        users = get_all_users()
+        success = 0
+        failed = 0
+        
+        for uid in users:
+            try:
+                await context.bot.send_message(chat_id=uid, text=f"📢 Рассылка:\n\n{text}")
+                success += 1
+            except:
+                failed += 1
+        
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔧 В админку", callback_data='admin_panel')]])
+        await update.message.reply_text(f"✅ Рассылка завершена!\nУспешно: {success}\nОшибки: {failed}", reply_markup=keyboard)
+        return ConversationHandler.END
+    
+    # УДАЛЕНИЕ КОШЕЛЬКА
     if context.user_data.get('action') == 'delete':
         wallets = get_user_wallets(user_id)
         if not wallets:
@@ -199,7 +271,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         if not text.isdigit():
             keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("В меню", callback_data='back')]])
-            await update.message.reply_text("Введите номер.", reply_markup=keyboard)
+            await update.message.reply_text("Введите номер кошелька.", reply_markup=keyboard)
             return CONFIRM_DELETE
         
         num = int(text)
@@ -212,9 +284,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         delete_wallet(user_id, wallet, network)
         
         keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("В меню", callback_data='back')]])
-        await update.message.reply_text(f"Удалено: {label}", reply_markup=keyboard)
+        await update.message.reply_text(f"✅ Удалено: {label}", reply_markup=keyboard)
         return ConversationHandler.END
     
+    # ПРОВЕРКА БАЛАНСА
     if 'network' in context.user_data:
         network = context.user_data['network']
         
@@ -237,17 +310,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             scan_link = f"https://tronscan.org/#/address/{wallet}" if network == 'TRC20' else f"https://etherscan.io/address/{wallet}"
             
             keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton("Добавить", callback_data=f'add_monitor_{wallet}_{network}')],
-                [InlineKeyboardButton("Сканер", url=scan_link)],
+                [InlineKeyboardButton("➕ Добавить", callback_data=f'add_monitor_{wallet}_{network}')],
+                [InlineKeyboardButton("🔍 Сканер", url=scan_link)],
                 [InlineKeyboardButton("В меню", callback_data='back')]
             ])
             
             await update.message.reply_text(
-                f"Баланс: {analytics['balance']}\n"
-                f"Входящие 24ч: {analytics['incoming_24h']}\n"
-                f"Исходящие 24ч: {analytics['outgoing_24h']}\n"
-                f"Тип: {analytics['exchange']}",
-                reply_markup=keyboard
+                f"💰 *Баланс:* {analytics['balance']}\n"
+                f"📈 *Входящие (24ч):* {analytics['incoming_24h']} USDT\n"
+                f"📉 *Исходящие (24ч):* {analytics['outgoing_24h']} USDT\n"
+                f"📊 *Тип кошелька:* {analytics['exchange']}\n"
+                f"🔗 [Сканер]({scan_link})",
+                reply_markup=keyboard,
+                parse_mode='Markdown'
             )
             return ConversationHandler.END
         
@@ -274,42 +349,50 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 try:
                     add_wallet(user_id, wallet, network, label)
                     keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("В меню", callback_data='back')]])
-                    await update.message.reply_text(f"Добавлено! {label} ({network})", reply_markup=keyboard)
+                    await update.message.reply_text(f"✅ Добавлено! {label} ({network})", reply_markup=keyboard)
                 except Exception as e:
                     logger.error(f"Ошибка: {e}")
                     keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("В меню", callback_data='back')]])
                     await update.message.reply_text("Ошибка", reply_markup=keyboard)
                 return ConversationHandler.END
     
-    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("В меню", callback_data='back')]])
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("В меню", callback_data='back')]])
     await update.message.reply_text("Выберите действие:", reply_markup=keyboard)
     return None
 
 
 async def monitor_wallets(context: ContextTypes.DEFAULT_TYPE):
+    """Мониторинг - уведомление при ПРЕВЫШЕНИИ баланса 1500 USDT"""
     try:
         wallets = get_all_wallets()
         for user_id, wallet, network, last_balance, label in wallets:
             try:
-                from bot_logic import get_usdt_balance_trc20, get_usdt_balance_erc20
-                
                 if network == 'TRC20':
                     result = get_usdt_balance_trc20(wallet, TRONGRID_API_KEY)
                 else:
                     result = get_usdt_balance_erc20(wallet, ETHERSCAN_API_KEY)
                 
-                current_balance = result.balance if hasattr(result, 'balance') else result[0]
+                current_balance = result.balance
                 
+                # КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: отправляем когда баланс ПРЕВЫСИЛ 1500
+                # (а не когда пришла транзакция на 1500)
                 if current_balance >= 1500 and last_balance < 1500:
                     await context.bot.send_message(
                         chat_id=user_id,
-                        text=f"Баланс достиг {current_balance:.2f} USDT! {label}"
+                        text=f"🔔 *Уведомление!*\n\n"
+                             f"Баланс превысил 1500 USDT!\n\n"
+                             f"💰 Текущий баланс: *{current_balance:.2f} USDT*\n"
+                             f"🏷️ Кошелёк: {label}\n"
+                             f"🌐 Сеть: {network}\n"
+                             f"📋 Адрес: `{wallet}`",
+                        parse_mode='Markdown'
                     )
                 
+                # Всегда обновляем баланс в БД
                 update_balance(user_id, wallet, network, current_balance)
             
             except Exception as e:
-                logger.error(f"Ошибка {wallet}: {e}")
+                logger.error(f"Ошибка мониторинга {wallet}: {e}")
                 continue
     except Exception as e:
         logger.error(f"Ошибка мониторинга: {e}")
@@ -341,9 +424,10 @@ def main():
     app.add_handler(conv_handler)
     app.add_handler(CallbackQueryHandler(handle_callback))
     
+    # Мониторинг каждые 60 минут
     app.job_queue.run_repeating(monitor_wallets, interval=3600, first=60)
     
-    print("Bot started!")
+    print("✅ Бот запущен!")
     app.run_polling()
 
 
