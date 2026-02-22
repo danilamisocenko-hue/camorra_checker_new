@@ -1,7 +1,8 @@
-"""
-Telegram Bot для мониторинга USDT кошельков (TRC20/ERC20)
-"""
+import os
+from dotenv import load_dotenv
 
+# Загружаем переменные из .env
+load_dotenv()
 import logging
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import (
@@ -433,3 +434,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
