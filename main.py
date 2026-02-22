@@ -1,8 +1,11 @@
+"""
+Telegram Bot для мониторинга USDT кошельков (TRC20/ERC20)
+"""
+
 import os
 from dotenv import load_dotenv
-
-# Загружаем переменные из .env
 load_dotenv()
+
 import logging
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import (
@@ -27,17 +30,17 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if user:
         add_user(user.id, user.username, user.first_name)
     
-    keyboard = InlineKeyboardMarkup([
+    buttons = [
         [InlineKeyboardButton("FAQ", callback_data='faq')],
         [InlineKeyboardButton("Проверить баланс", callback_data='check_balance')],
         [InlineKeyboardButton("Добавить кошелек", callback_data='add_wallet')],
         [InlineKeyboardButton("Мои кошельки", callback_data='my_wallets')]
-    ])
+    ]
     
-    # Добавляем кнопку админа если пользователь админ
     if user.id in ADMINS:
-        keyboard.inline_keyboard.append([InlineKeyboardButton("🔧 Админ-панель", callback_data='admin_panel')])
+        buttons.append([InlineKeyboardButton("🔧 Админ-панель", callback_data='admin_panel')])
     
+    keyboard = InlineKeyboardMarkup(buttons)
     await update.message.reply_text("Привет! Выберите действие:", reply_markup=keyboard)
 
 
@@ -75,28 +78,29 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
     
     if data == 'back':
-        keyboard = InlineKeyboardMarkup([
+        buttons = [
             [InlineKeyboardButton("FAQ", callback_data='faq')],
             [InlineKeyboardButton("Проверить баланс", callback_data='check_balance')],
             [InlineKeyboardButton("Добавить кошелек", callback_data='add_wallet')],
             [InlineKeyboardButton("Мои кошельки", callback_data='my_wallets')]
-        ])
+        ]
         if user_id in ADMINS:
-            keyboard.inline_keyboard.append([InlineKeyboardButton("🔧 Админ-панель", callback_data='admin_panel')])
+            buttons.append([InlineKeyboardButton("🔧 Админ-панель", callback_data='admin_panel')])
+        keyboard = InlineKeyboardMarkup(buttons)
         await query.message.reply_text("Главное меню:", reply_markup=keyboard)
         return
     
-    # АДМИН ПАНЕЛЬ
     elif data == 'admin_panel':
         if user_id not in ADMINS:
             await query.message.reply_text("Нет доступа!")
             return
         
-        keyboard = InlineKeyboardMarkup([
+        buttons = [
             [InlineKeyboardButton("📢 Рассылка", callback_data='admin_broadcast')],
             [InlineKeyboardButton("📊 Статистика", callback_data='admin_stats')],
             [InlineKeyboardButton("🔙 Назад", callback_data='back')]
-        ])
+        ]
+        keyboard = InlineKeyboardMarkup(buttons)
         await query.message.reply_text("🔧 Админ-панель:", reply_markup=keyboard)
         return
     
@@ -104,7 +108,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user_id not in ADMINS:
             return
         context.user_data['action'] = 'admin_broadcast'
-        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Отмена", callback_data='admin_panel')]])
+        buttons = [[InlineKeyboardButton("Отмена", callback_data='admin_panel')]]
+        keyboard = InlineKeyboardMarkup(buttons)
         await query.message.reply_text("Введите текст рассылки:", reply_markup=keyboard)
         return CONFIRM_DELETE
     
@@ -114,50 +119,50 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         users = get_all_users()
         wallets = get_all_wallets()
         
-        text = f"📊 *Статистика бота:*\n\n"
-        text += f"👥 Пользователей: {len(users)}\n"
-        text += f"💰 Кошельков на мониторинге: {len(wallets)}\n"
+        text = f"📊 *Статистика бота:*\n\n👥 Пользователей: {len(users)}\n💰 Кошельков: {len(wallets)}"
         
-        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Назад", callback_data='admin_panel')]])
+        buttons = [[InlineKeyboardButton("🔙 Назад", callback_data='admin_panel')]]
+        keyboard = InlineKeyboardMarkup(buttons)
         await query.message.reply_text(text, reply_markup=keyboard, parse_mode='Markdown')
         return
     
     elif data == 'faq':
-        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("В меню", callback_data='back')]])
+        buttons = [[InlineKeyboardButton("В меню", callback_data='back')]]
+        keyboard = InlineKeyboardMarkup(buttons)
         await query.message.reply_text(
-            "FAQ:\n\n"
-            "• Бот проверяет баланс USDT на TRC20 и ERC20\n"
-            "• Добавьте кошелек на мониторинг\n"
-            "• Получите уведомление когда баланс превысит 1500 USDT",
+            "FAQ:\n\n• Бот проверяет баланс USDT на TRC20 и ERC20\n• Добавьте кошелек на мониторинг\n• Получите уведомление когда баланс превысит 1500 USDT",
             reply_markup=keyboard
         )
         return
     
     elif data == 'check_balance':
-        keyboard = InlineKeyboardMarkup([
+        buttons = [
             [InlineKeyboardButton("TRC20", callback_data='check_trc20')],
             [InlineKeyboardButton("ERC20", callback_data='check_erc20')],
             [InlineKeyboardButton("В меню", callback_data='back')]
-        ])
+        ]
+        keyboard = InlineKeyboardMarkup(buttons)
         await query.message.reply_text("Выберите сеть:", reply_markup=keyboard)
         return SELECT_NETWORK_CHECK
     
     elif data == 'add_wallet':
-        keyboard = InlineKeyboardMarkup([
+        buttons = [
             [InlineKeyboardButton("TRC20", callback_data='add_trc20')],
             [InlineKeyboardButton("ERC20", callback_data='add_erc20')],
             [InlineKeyboardButton("В меню", callback_data='back')]
-        ])
+        ]
+        keyboard = InlineKeyboardMarkup(buttons)
         await query.message.reply_text("Выберите сеть:", reply_markup=keyboard)
         return SELECT_NETWORK_ADD
     
     elif data == 'my_wallets':
         wallets = get_user_wallets(user_id)
         if not wallets:
-            keyboard = InlineKeyboardMarkup([
+            buttons = [
                 [InlineKeyboardButton("Добавить", callback_data='add_wallet')],
                 [InlineKeyboardButton("В меню", callback_data='back')]
-            ])
+            ]
+            keyboard = InlineKeyboardMarkup(buttons)
             await query.message.reply_text("Нет кошельков.", reply_markup=keyboard)
         else:
             text = "📋 *Ваши кошельки:*\n\n"
@@ -166,21 +171,22 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text += f"{i}. {label_disp} ({network}) - {balance:.2f} USDT\n"
                 text += f"   `{wallet}`\n\n"
             
-            keyboard = InlineKeyboardMarkup([
+            buttons = [
                 [InlineKeyboardButton("❌ Удалить", callback_data='delete_wallet')],
                 [InlineKeyboardButton("В меню", callback_data='back')]
-            ])
+            ]
+            keyboard = InlineKeyboardMarkup(buttons)
             await query.message.reply_text(text, reply_markup=keyboard, parse_mode='Markdown')
         return
     
     elif data == 'delete_wallet':
         wallets = get_user_wallets(user_id)
         if not wallets:
-            keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("В меню", callback_data='back')]])
+            buttons = [[InlineKeyboardButton("В меню", callback_data='back')]]
+            keyboard = InlineKeyboardMarkup(buttons)
             await query.message.reply_text("Нет кошельков.", reply_markup=keyboard)
             return
         
-        # ВАЖНО: Устанавливаем action = delete
         context.user_data['action'] = 'delete'
         
         text = "❌ *Удаление кошелька*\n\nВведите номер:\n\n"
@@ -188,37 +194,40 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             label_disp = label if label else "Без метки"
             text += f"{i}. {label_disp} ({network})\n   `{wallet}`\n\n"
         
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("Отмена", callback_data='my_wallets')]
-        ])
+        buttons = [[InlineKeyboardButton("Отмена", callback_data='my_wallets')]]
+        keyboard = InlineKeyboardMarkup(buttons)
         await query.message.reply_text(text, reply_markup=keyboard, parse_mode='Markdown')
         return CONFIRM_DELETE
     
     elif data == 'check_trc20':
         context.user_data['network'] = 'TRC20'
         context.user_data['action'] = 'check'
-        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("В меню", callback_data='back')]])
+        buttons = [[InlineKeyboardButton("В меню", callback_data='back')]]
+        keyboard = InlineKeyboardMarkup(buttons)
         await query.message.reply_text("Введите адрес кошелька:", reply_markup=keyboard)
         return ENTER_WALLET_CHECK
     
     elif data == 'check_erc20':
         context.user_data['network'] = 'ERC20'
         context.user_data['action'] = 'check'
-        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("В меню", callback_data='back')]])
+        buttons = [[InlineKeyboardButton("В меню", callback_data='back')]]
+        keyboard = InlineKeyboardMarkup(buttons)
         await query.message.reply_text("Введите адрес кошелька:", reply_markup=keyboard)
         return ENTER_WALLET_CHECK
     
     elif data == 'add_trc20':
         context.user_data['network'] = 'TRC20'
         context.user_data['action'] = 'add'
-        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("В меню", callback_data='back')]])
+        buttons = [[InlineKeyboardButton("В меню", callback_data='back')]]
+        keyboard = InlineKeyboardMarkup(buttons)
         await query.message.reply_text("Введите метку:", reply_markup=keyboard)
         return ENTER_LABEL_ADD
     
     elif data == 'add_erc20':
         context.user_data['network'] = 'ERC20'
         context.user_data['action'] = 'add'
-        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("В меню", callback_data='back')]])
+        buttons = [[InlineKeyboardButton("В меню", callback_data='back')]]
+        keyboard = InlineKeyboardMarkup(buttons)
         await query.message.reply_text("Введите метку:", reply_markup=keyboard)
         return ENTER_LABEL_ADD
     
@@ -228,11 +237,13 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         network = parts[3]
         try:
             add_wallet(user_id, wallet, network, 'Без метки')
-            keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("В меню", callback_data='back')]])
+            buttons = [[InlineKeyboardButton("В меню", callback_data='back')]]
+            keyboard = InlineKeyboardMarkup(buttons)
             await query.message.reply_text(f"✅ Добавлено! {wallet} ({network})", reply_markup=keyboard)
         except Exception as e:
             logger.error(f"Ошибка: {e}")
-            keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("В меню", callback_data='back')]])
+            buttons = [[InlineKeyboardButton("В меню", callback_data='back')]]
+            keyboard = InlineKeyboardMarkup(buttons)
             await query.message.reply_text("Ошибка", reply_markup=keyboard)
         return
 
@@ -242,7 +253,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = user.id if user else None
     
-    # РАССЫЛКА АДМИНА
     if context.user_data.get('action') == 'admin_broadcast':
         if user_id not in ADMINS:
             return ConversationHandler.END
@@ -258,37 +268,40 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except:
                 failed += 1
         
-        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔧 В админку", callback_data='admin_panel')]])
+        buttons = [[InlineKeyboardButton("🔧 В админку", callback_data='admin_panel')]]
+        keyboard = InlineKeyboardMarkup(buttons)
         await update.message.reply_text(f"✅ Рассылка завершена!\nУспешно: {success}\nОшибки: {failed}", reply_markup=keyboard)
         return ConversationHandler.END
     
-    # УДАЛЕНИЕ КОШЕЛЬКА
     if context.user_data.get('action') == 'delete':
         wallets = get_user_wallets(user_id)
         if not wallets:
-            keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("В меню", callback_data='back')]])
+            buttons = [[InlineKeyboardButton("В меню", callback_data='back')]]
+            keyboard = InlineKeyboardMarkup(buttons)
             await update.message.reply_text("Нет кошельков.", reply_markup=keyboard)
             return ConversationHandler.END
         
         if not text.isdigit():
-            keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("В меню", callback_data='back')]])
+            buttons = [[InlineKeyboardButton("В меню", callback_data='back')]]
+            keyboard = InlineKeyboardMarkup(buttons)
             await update.message.reply_text("Введите номер кошелька.", reply_markup=keyboard)
             return CONFIRM_DELETE
         
         num = int(text)
         if num < 1 or num > len(wallets):
-            keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("В меню", callback_data='back')]])
+            buttons = [[InlineKeyboardButton("В меню", callback_data='back')]]
+            keyboard = InlineKeyboardMarkup(buttons)
             await update.message.reply_text(f"Введите от 1 до {len(wallets)}.", reply_markup=keyboard)
             return CONFIRM_DELETE
         
         wallet, network, _, label = wallets[num - 1]
         delete_wallet(user_id, wallet, network)
         
-        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("В меню", callback_data='back')]])
+        buttons = [[InlineKeyboardButton("В меню", callback_data='back')]]
+        keyboard = InlineKeyboardMarkup(buttons)
         await update.message.reply_text(f"✅ Удалено: {label}", reply_markup=keyboard)
         return ConversationHandler.END
     
-    # ПРОВЕРКА БАЛАНСА
     if 'network' in context.user_data:
         network = context.user_data['network']
         
@@ -296,12 +309,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             wallet = text
             
             if network == 'TRC20' and not wallet.startswith('T'):
-                keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("В меню", callback_data='back')]])
+                buttons = [[InlineKeyboardButton("В меню", callback_data='back')]]
+                keyboard = InlineKeyboardMarkup(buttons)
                 await update.message.reply_text("Ошибка: адрес TRC20 должен начинаться с T", reply_markup=keyboard)
                 return ENTER_WALLET_CHECK
             
             if network == 'ERC20' and not (wallet.startswith('0x') and len(wallet) == 42):
-                keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("В меню", callback_data='back')]])
+                buttons = [[InlineKeyboardButton("В меню", callback_data='back')]]
+                keyboard = InlineKeyboardMarkup(buttons)
                 await update.message.reply_text("Ошибка: невалидный адрес ERC20", reply_markup=keyboard)
                 return ENTER_WALLET_CHECK
             
@@ -310,17 +325,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             scan_link = f"https://tronscan.org/#/address/{wallet}" if network == 'TRC20' else f"https://etherscan.io/address/{wallet}"
             
-            keyboard = InlineKeyboardMarkup([
+            buttons = [
                 [InlineKeyboardButton("➕ Добавить", callback_data=f'add_monitor_{wallet}_{network}')],
                 [InlineKeyboardButton("🔍 Сканер", url=scan_link)],
                 [InlineKeyboardButton("В меню", callback_data='back')]
-            ])
+            ]
+            keyboard = InlineKeyboardMarkup(buttons)
             
             await update.message.reply_text(
                 f"💰 *Баланс:* {analytics['balance']}\n"
                 f"📈 *Входящие (24ч):* {analytics['incoming_24h']} USDT\n"
                 f"📉 *Исходящие (24ч):* {analytics['outgoing_24h']} USDT\n"
-                f"📊 *Тип кошелька:* {analytics['exchange']}\n"
+                f"📊 *Тип:* {analytics['exchange']}\n"
                 f"🔗 [Сканер]({scan_link})",
                 reply_markup=keyboard,
                 parse_mode='Markdown'
@@ -330,7 +346,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif context.user_data.get('action') == 'add':
             if 'label' not in context.user_data:
                 context.user_data['label'] = text or 'Без метки'
-                keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("В меню", callback_data='back')]])
+                buttons = [[InlineKeyboardButton("В меню", callback_data='back')]]
+                keyboard = InlineKeyboardMarkup(buttons)
                 await update.message.reply_text("Введите адрес кошелька:", reply_markup=keyboard)
                 return ENTER_WALLET_ADD
             else:
@@ -338,26 +355,31 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 wallet = text
                 
                 if network == 'TRC20' and not wallet.startswith('T'):
-                    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("В меню", callback_data='back')]])
+                    buttons = [[InlineKeyboardButton("В меню", callback_data='back')]]
+                    keyboard = InlineKeyboardMarkup(buttons)
                     await update.message.reply_text("Ошибка: адрес TRC20", reply_markup=keyboard)
                     return ENTER_WALLET_ADD
                 
                 if network == 'ERC20' and not (wallet.startswith('0x') and len(wallet) == 42):
-                    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("В меню", callback_data='back')]])
+                    buttons = [[InlineKeyboardButton("В меню", callback_data='back')]]
+                    keyboard = InlineKeyboardMarkup(buttons)
                     await update.message.reply_text("Ошибка: адрес ERC20", reply_markup=keyboard)
                     return ENTER_WALLET_ADD
                 
                 try:
                     add_wallet(user_id, wallet, network, label)
-                    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("В меню", callback_data='back')]])
+                    buttons = [[InlineKeyboardButton("В меню", callback_data='back')]]
+                    keyboard = InlineKeyboardMarkup(buttons)
                     await update.message.reply_text(f"✅ Добавлено! {label} ({network})", reply_markup=keyboard)
                 except Exception as e:
                     logger.error(f"Ошибка: {e}")
-                    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("В меню", callback_data='back')]])
+                    buttons = [[InlineKeyboardButton("В меню", callback_data='back')]]
+                    keyboard = InlineKeyboardMarkup(buttons)
                     await update.message.reply_text("Ошибка", reply_markup=keyboard)
                 return ConversationHandler.END
     
-        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("В меню", callback_data='back')]])
+    buttons = [[InlineKeyboardButton("В меню", callback_data='back')]]
+    keyboard = InlineKeyboardMarkup(buttons)
     await update.message.reply_text("Выберите действие:", reply_markup=keyboard)
     return None
 
@@ -375,8 +397,6 @@ async def monitor_wallets(context: ContextTypes.DEFAULT_TYPE):
                 
                 current_balance = result.balance
                 
-                # КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: отправляем когда баланс ПРЕВЫСИЛ 1500
-                # (а не когда пришла транзакция на 1500)
                 if current_balance >= 1500 and last_balance < 1500:
                     await context.bot.send_message(
                         chat_id=user_id,
@@ -389,7 +409,6 @@ async def monitor_wallets(context: ContextTypes.DEFAULT_TYPE):
                         parse_mode='Markdown'
                     )
                 
-                # Всегда обновляем баланс в БД
                 update_balance(user_id, wallet, network, current_balance)
             
             except Exception as e:
@@ -425,7 +444,6 @@ def main():
     app.add_handler(conv_handler)
     app.add_handler(CallbackQueryHandler(handle_callback))
     
-    # Мониторинг каждые 60 минут
     app.job_queue.run_repeating(monitor_wallets, interval=3600, first=60)
     
     print("✅ Бот запущен!")
@@ -434,4 +452,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
